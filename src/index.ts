@@ -76,7 +76,7 @@ const app = new ApplicationBuilder<ApplicationTurnState>()
     .withAuthentication(adapter, {
         settings: {
             graph: {
-                scopes: ['User.Read'],
+                scopes: ['User.Read', 'Tasks.ReadWrite'],
                 msalConfig: {
                     auth: {
                         clientId: process.env.AAD_APP_CLIENT_ID!,
@@ -122,6 +122,40 @@ app.message('/me', async (context: TurnContext, state: ApplicationTurnState) => 
     try {
         const user = await client.api('/me').get();
         await context.sendActivity(`Hello ${user.displayName}, your email is ${user.mail}`);
+    } catch (error) {
+        console.error(error);
+        await context.sendActivity('Sorry, there was an error fetching your profile.');
+    }
+});
+
+// Listen for user to say '/me' and show users profile
+app.message('/tasks', async (context: TurnContext, state: ApplicationTurnState) => {
+    const token = state.temp.authTokens['graph'];
+
+    if (!token) {
+        await context.sendActivity('You are not authenticated. Please sign in first.');
+        return;
+    }
+
+    const client = Client.init({
+        authProvider: (done) => {
+            done(null, token);
+        }
+    });
+
+    try {
+        const tasks = await client.api('/me/planner/tasks').get();
+        if (!tasks.value || tasks.value.length === 0) {
+            await context.sendActivity('You have no tasks');
+            return;
+        }
+        // concatentate all tasks
+        let taskString = '```text\n';
+        for (const task of tasks.value) {
+            taskString += `- ${task.title}\n`;
+        }
+        taskString += '```';
+        await context.sendActivity(taskString);
     } catch (error) {
         console.error(error);
         await context.sendActivity('Sorry, there was an error fetching your profile.');
